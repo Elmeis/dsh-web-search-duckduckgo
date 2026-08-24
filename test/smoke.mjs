@@ -33,17 +33,18 @@ assert.equal(registered.available(), true);
 const seenRequests = [];
 /** Minimal html-endpoint page: two hits (one uddg-wrapped), a duplicate, junk. */
 const HTML_PAGE = `<html><body>
-<div class="result"><h2><a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fa.example%2Fone%3Fx%3D1">Cat &amp; Dog <b>guide</b></a></h2>
-<a class="result__snippet" href="#">snippy <em>first</em> &amp; &#39;quoted&#39;</a></div>
+<div class="result"><h2><a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fa.example%2Fone%3Fx%3D1&amp;rut=abc" class="result__a">Cat &amp; Dog <b>guide</b></a></h2>
+<a rel="nofollow" class="result__snippet" href="#">snippy <em>first</em> &amp; &#39;quoted&#39;</a></div>
 <div class="result"><a class="result__a" href="https://b.example/two">Second</a>
-<span class="result__snippet"></span></div>
+<span class='result__snippet'></span></div>
 <div class="result"><a class="result__a" href="https://a.example/one?x=1">Dup</a></div>
 <a class="result__a" href="javascript:void(0)">junk</a>
 </body></html>`;
 const LITE_PAGE = `<html><body><table>
-<tr><td><a class="result-link" href="https://c.example/three">Lite hit</a></td></tr>
-<tr><td class="result-snippet">lite snippet</td></tr>
+<tr><td><a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fc.example%2Fthree" class='result-link'>Lite hit</a></td></tr>
+<tr><td class='result-snippet'>lite snippet</td></tr>
 </table></body></html>`;
+const CHALLENGE_PAGE = `<!DOCTYPE html><html><head><title>Unfortunately, it looks like an anomaly...</title></head><body>challenge 12</body></html>`;
 
 const server = createServer((req, res) => {
 	const chunks = [];
@@ -59,6 +60,12 @@ const server = createServer((req, res) => {
 			if (req.url.includes("mode=fail")) {
 				res.writeHead(403);
 				res.end("forbidden");
+				return;
+			}
+			if (req.url.includes("mode=challenge")) {
+				// DuckDuckGo's anti-bot interstitial ships with a 2xx status.
+				res.writeHead(202, { "content-type": "text/html" });
+				res.end(CHALLENGE_PAGE);
 				return;
 			}
 			res.writeHead(200, { "content-type": "text/html" });
@@ -138,6 +145,21 @@ assert.equal(optionedBody.get("df"), "m");
 	})).search({ query: "cat" });
 	assert.deepEqual(result.sources.map((source) => source.url), ["https://c.example/three"]);
 	assert.equal(result.sources[0].snippet, "lite snippet");
+}
+
+// A 2xx anti-bot interstitial is detected and falls through, naming the page.
+await assert.rejects(
+	new mod.DuckDuckGoSearchProvider(() => opts({
+		endpoint: "html",
+		htmlEndpointURL: `${base}/html?mode=challenge`
+	})).search({ query: "cat" }),
+	(error) => error.code === "WEB_PROVIDER_ERROR" && error.message.includes("anti-bot challenge")
+);
+{
+	const result = await new mod.DuckDuckGoSearchProvider(() => opts({
+		htmlEndpointURL: `${base}/html?mode=challenge`
+	})).search({ query: "cat" });
+	assert.deepEqual(result.sources.map((source) => source.url), ["https://c.example/three"], "auto survives a challenged html endpoint");
 }
 
 // Both endpoints failing → last HTTP error surfaces.
