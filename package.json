@@ -1,0 +1,12 @@
+{
+  "name": "@local/dsh-web-search-duckduckgo",
+  "description": "Keyless DuckDuckGo search provider (HTML/Lite endpoint parsing, zero infrastructure) for the DeepSeek Harness web capability seam (ctx.web)",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "license": "MIT"
+}
